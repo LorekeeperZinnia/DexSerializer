@@ -37,7 +37,7 @@ It would be nice if executors supported this fully so in the event The Augur ris
 ## How to Use
 Assuming you are using it as a module
 ```lua
-local serializer = require("DexSerializer")
+local serializer = require("serializer.lua")
 serializer.Init()
 
 -- Then we can save
