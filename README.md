@@ -9,6 +9,16 @@ An accurate Roblox Binary Format Serializer made in Lua
 </p>
 
 
+## Disclaimer
+Executors are not recommended to use this serializer as is, since is not maintained. I only released this for learning purposes.
+It is recommended to wait for someone interested to fork this so they can take over the project and maintain it.
+Or if you are interesting in maintaining this GitHub repo itself, then please contact me in the community server.
+
+I do not use executors anymore so I had did small fixes to support the newer API dumps in studio, etc.
+Go to [Suggested Improvements](#suggested-improvements) to see a list of improvements that can be made to this script.
+Please see the [Known Issues](#known-issues) section for some issues that people I know have found when I had them test this script on executors.
+
+
 ## Overview
 This serializer was completed in late 2020 in preperation for The Augur's reign that started in July 2021
 
@@ -21,13 +31,9 @@ This is old and discontinued, but the agency released it to show people the gran
 powered the saveinstance function in the top executors at the time before they were discontinued:
 - ScriptWare
 - Synapse X
+- Elysian
 
 The options in this serializer is also what UNC's saveinstance is based of, due to ScriptWare using this as its primary saveinstance implementation.
-
-It would be nice if someone forked and improved it by doing the following:
-- Support the newer roblox types such as Content, etc
-- Use buffer
-- Use ReflectionService
 
 Note that there are little to no comments since I didn't intend to release to public.
 
@@ -79,6 +85,19 @@ If Callback or Clipboard is set, it does that instead of writing to a file.
 	- Vector3int16 (used in TerrainRegion)
 - have lz4 compress function
 - have a clipboard function that sets to `application/x-roblox-studio` (for reference, copy something in studio and use clipboard viewer to see how its saved)
+
+## Suggested Improvements
+Here are some sugggestions for those interested in maintaining this script:
+- Support the newer roblox types such as Content, SecurityCapabilities, etc
+	- Would also be nice if you can work with executor devs to make sure their `gethiddenprop` function supports all value types that can be serialized.
+	- If you are interested in reversing the new types, I have attached a script called `unlz4.lua` that you can modify to decompress the lz4 chunks in a binary format file so you can take a look at how studio saves certain types.
+- Use buffer
+- Use ReflectionService for API dumps
+
+## Known Issues
+- Axes property doesn't save properly in XML due to a typo in the tag
+- XML may not work with the full API dump since I had scripted it before switching over to full API dump. I had used to make special handlers for BinaryString and other hidden properties.
+- Color3uint8 in binary was just an assumption (A color type that has R G B as integers from 0-255) since gethiddenprop did not support that value type. If you run into issues, simply add BasePart.Color3uint8 to the `propFilter` table.
 
 ## Community Server
 If you would like to find more information, or talk to others interested in this script, you may join the server:<br>https://discord.gg/jnXFq2VBgU<br>
