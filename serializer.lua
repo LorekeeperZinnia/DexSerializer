@@ -1240,14 +1240,6 @@ Serializer = (function()
 					message = message .. "\t" .. tostring(i) .. " = " .. tostring(v) .. "\n"
 				end
 			end
-
-			message = message .. "]]"
-
-			local readmeScript = Instance.new("Script")
-			readmeScript.Name = "README"
-			nilBlacklist[readmeScript] = true
-			sources[readmeScript] = message
-			recur(readmeScript)
 		elseif isTable then
 			for i = 1,#root do
 				recur(root[i])
@@ -1816,17 +1808,6 @@ Serializer = (function()
 				end
 
 			end
-
-			message = message .. "]]"
-
-			buffer[bufferCount] = [==[
-
-<Item class="Script" referent="RBX999999999">
-<Properties>
-<string name="Name">README</string>
-<ProtectedString name="Source">]==]..gsub(message, xmlReplacePattern, xmlReplace)..[==[</ProtectedString>
-</Properties>
-</Item>]==]
 			bufferCount = bufferCount + 1
 		elseif isTable then
 			for i = 1,#root do
