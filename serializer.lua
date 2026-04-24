@@ -18,7 +18,7 @@ DefaultSettings = {
 		DecompileIgnore = {"Chat","CoreGui","CorePackages"},
 		ShowStatus = true,
 		IgnoreDefaultProps = true,
-		IsolateStarterPlayer = true,
+		IsolateStarterPlayer = false,
 		Binary = true,
 		Callback = true,
 		Clipboard = true
@@ -795,24 +795,7 @@ Serializer = (function()
 			return concat(result)
 		end,
 	}
-
-	local specialProps = {
-		["Script"] = {
-			{Name = "Source", ValueType = {Name = "ProtectedString", Category = "DataType"}, Special = "Decompile"}
-		},
-		["ModuleScript"] = {
-			{Name = "Source", ValueType = {Name = "ProtectedString", Category = "DataType"}, Special = "Decompile"}
-		},
-		["TerrainRegion"] = { -- TODO: Vector3int16 support for gethiddenprop
-			{Name = "ExtentsMin", ValueType = {Name = "Vector3int16", Category = "DataType"}, Special = "Func", Func = function(obj) return workspace.Terrain.MaxExtents.Min end},
-			{Name = "ExtentsMax", ValueType = {Name = "Vector3int16", Category = "DataType"}, Special = "Func", Func = function(obj) return workspace.Terrain.MaxExtents.Max end},
-		},
-		["Model"] = { -- TODO: OptionalCoordinateFrame support for gethiddenprop
-			{Name = "WorldPivotData", ValueType = {Name = "OptionalCoordinateFrame", Category = "DataType"}, IndexName = "WorldPivot"},
-		},
-	}
-
-	--[[
+		
 	local specialProps = {
 		["Instance"] = {
 			{Name = "AttributesSerialize", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
@@ -889,33 +872,6 @@ Serializer = (function()
 			{Name = "VersionIdSerialize", ValueType = {Name = "int64"}, IndexName = "VersionNumber"}
 		}
 	}
-	]]
-
-	local readMeStart = [==[--[[
-	Thank you for using Dex SaveInstance.
-	You are recommended to save the game (if you used saveplace) right away to take advantage of the binary format (if you didn't save in binary).
-	If your player cannot spawn into the game, please move the scripts in StarterPlayer elsewhere. (This is done by default)
-	If the chat system does not work, please use the explorer and delete everything inside the Chat service. (Or run game:GetService("Chat"):ClearAllChildren())
-	
-	If union and meshpart collisions don't work, first run this script in the Studio command bar:
-	local list = {}
-	local coreGui = game:GetService("CoreGui")
-
-	for i,v in pairs(game:GetDescendants()) do
-		local s,e = pcall(function() return v:IsA("UnionOperation") or v:IsA("MeshPart") end)
-		if s and e and not v:IsDescendantOf(coreGui) then
-			list[#list+1] = v
-		end
-	end
-
-	game.Selection:Set(list)
-	
-	After running it, go to the Properties window and change CollisionFidelity from "Box" to "Default".
-
-	
-	This file was generated with the following settings:
-	
-]==]
 
 	local function getSaveProps(obj,class)
 		local result = {}
@@ -1072,7 +1028,7 @@ Serializer = (function()
 			descs[0] = nextRoot
 			for i = 0,#descs do
 				local obj = descs[i]
-				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript")) and not checked[obj] then
+				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript") or isa(obj,"Script")) and not checked[obj] then
 					local ignored = false
 					if ignoredServices then
 						for i = 1,#ignoredServices do
@@ -1239,8 +1195,6 @@ Serializer = (function()
 				end
 			end
 
-			local message = readMeStart
-
 			for i, v in next, saveSettings do
 				if type(v) == "table" then -- assume array
 					local strings = {}
@@ -1252,14 +1206,8 @@ Serializer = (function()
 					message = message .. "\t" .. tostring(i) .. " = " .. tostring(v) .. "\n"
 				end
 			end
+			bufferCount = bufferCount + 1
 
-			message = message .. "]]"
-
-			local readmeScript = Instance.new("Script")
-			readmeScript.Name = "README"
-			nilBlacklist[readmeScript] = true
-			sources[readmeScript] = message
-			recur(readmeScript)
 		elseif isTable then
 			for i = 1,#root do
 				recur(root[i])
@@ -1814,8 +1762,6 @@ Serializer = (function()
 				end
 			end
 
-			local message = readMeStart
-
 			for i, v in next, saveSettings do
 				if type(v) == "table" then -- assume array
 					local strings = {}
@@ -1828,17 +1774,6 @@ Serializer = (function()
 				end
 
 			end
-
-			message = message .. "]]"
-
-			buffer[bufferCount] = [==[
-
-<Item class="Script" referent="RBX999999999">
-<Properties>
-<string name="Name">README</string>
-<ProtectedString name="Source">]==]..gsub(message, xmlReplacePattern, xmlReplace)..[==[</ProtectedString>
-</Properties>
-</Item>]==]
 			bufferCount = bufferCount + 1
 		elseif isTable then
 			for i = 1,#root do
@@ -1957,118 +1892,73 @@ Main = (function()
 	local Main = {}
 
 	Main.FetchAPI = function()
-    local HttpService = game:GetService("HttpService")
-    local RunService = game:GetService("RunService")
-    
-    -- NOTE: ReflectionService is a restricted service. 
-    -- In standard Luau, we use 'ReflectionMetadata' items from Explorer or the API dump tags.
-    local rawAPI
-    if RunService:IsStudio() then
-        -- Check if we have a local dump, otherwise fallback
-        local success, result = pcall(function() return require(game.ReplicatedStorage.FullAPI) end)
-        rawAPI = success and result or nil
-    end
+		-- You should see if you can use ReflectionService here
 
-    if not rawAPI then
-        -- Updated URL to the most reliable JSON source
-        rawAPI = game:HttpGet("https://raw.githubusercontent.com/Unkown2012/DexSerializer2/refs/heads/main/Full-API-Dump.json")
-    end
+       	local success, result = pcall(function()
+		local ReflectionService = game:GetService("ReflectionService")
+		return ReflectionService:GetClasses()
+	end)
 
-    local api = HttpService:JSONDecode(rawAPI)
-    local classes, enums = {}, {}
+	if success and result then
+		return result
+	end
 
-    -- 1. Process Enums First (Dependencies)
-    for _, enum in ipairs(api.Enums) do
-        local newEnum = {
-            Name = enum.Name,
-            Items = {},
-            Tags = {}
-        }
-        if enum.Tags then for _, tag in ipairs(enum.Tags) do newEnum.Tags[tag] = true end end
-        for _, item in ipairs(enum.Items) do
-            table.insert(newEnum.Items, {Name = item.Name, Value = item.Value})
-        end
-        enums[enum.Name] = newEnum
-    end
 
-    -- 2. Process Classes
-    for _, class in ipairs(api.Classes) do
-        local newClass = {
-            Name = class.Name,
-            Superclass = nil, -- Linked after this loop to ensure order safety
-            RawSuperclass = class.Superclass, 
-            Properties = {},
-            Functions = {},
-            Events = {},
-            Callbacks = {},
-            Tags = {}
-        }
+		--local robloxVer = game:HttpGet("http://setup.roblox.com/versionQTStudio")
+		local rawAPI
+		
+		if game:GetService("RunService"):IsStudio() then
+			rawAPI = require(game.ReplicatedStorage.FullAPI)
+		else
+			rawAPI = game:HttpGet("https://github.com/Unkown2012/DexSerializer2/raw/refs/heads/main/Full-API-Dump.json")
+		end
+		
+		local api = service.HttpService:JSONDecode(rawAPI)
+		local classes,enums = {},{}
 
-        if class.Tags then for _, tag in ipairs(class.Tags) do newClass.Tags[tag] = true end end
+		for _,class in pairs(api.Classes) do
+			local newClass = {}
+			newClass.Name = class.Name
+			newClass.Superclass = classes[class.Superclass]
+			newClass.Properties = {}
+			newClass.Functions = {}
+			newClass.Events = {}
+			newClass.Callbacks = {}
+			newClass.Tags = {}
 
-        for _, member in ipairs(class.Members) do
-            local newMember = {
-                Name = member.Name,
-                Class = class.Name,
-                Tags = {}
-            }
-            if member.Tags then for _, tag in ipairs(member.Tags) do newMember.Tags[tag] = true end end
+			if class.Tags then for c,tag in pairs(class.Tags) do newClass.Tags[tag] = true end end
 
-            local mType = member.MemberType
-            if mType == "Property" then
-                newMember.ValueType = member.ValueType
-                newMember.Category = member.Category
-                table.insert(newClass.Properties, newMember)
-            elseif mType == "Function" then
-                newMember.Parameters = {}
-                newMember.ReturnType = member.ReturnType.Name
-                for _, param in ipairs(member.Parameters) do
-                    table.insert(newMember.Parameters, {Name = param.Name, Type = param.Type.Name})
-                end
-                table.insert(newClass.Functions, newMember)
-            elseif mType == "Event" then
-                newMember.Parameters = {}
-                for _, param in ipairs(member.Parameters) do
-                    table.insert(newMember.Parameters, {Name = param.Name, Type = param.Type.Name})
-                end
-                table.insert(newClass.Events, newMember)
-            end
-        end
-        classes[class.Name] = newClass
-    end
+			for __,member in pairs(class.Members) do
+				local newMember = {}
+				newMember.Name = member.Name
+				newMember.Class = class.Name
+				newMember.Tags = {}
+				if member.Tags then for c,tag in pairs(member.Tags) do newMember.Tags[tag] = true end end
 
-    -- 3. Link Superclasses (The "Reflection" Tree)
-    for className, classData in pairs(classes) do
-        if classData.RawSuperclass and classes[classData.RawSuperclass] then
-            classData.Superclass = classes[classData.RawSuperclass]
-        end
-    end
+				local mType = member.MemberType
+				if mType == "Property" then
+					newMember.ValueType = member.ValueType
+					newMember.Category = member.Category
+					newMember.Serialization = member.Serialization
+					table.insert(newClass.Properties,newMember)
+				elseif mType == "Function" then
+					newMember.Parameters = {}
+					newMember.ReturnType = member.ReturnType.Name
+					for c,param in pairs(member.Parameters) do
+						table.insert(newMember.Parameters,{Name = param.Name, Type = param.Type.Name})
+					end
+					table.insert(newClass.Functions,newMember)
+				elseif mType == "Event" then
+					newMember.Parameters = {}
+					for c,param in pairs(member.Parameters) do
+						table.insert(newMember.Parameters,{Name = param.Name, Type = param.Type.Name})
+					end
+					table.insert(newClass.Events,newMember)
+				end
+			end
 
-    -- Helper: Get Inherited Members
-    local function getMember(className, memberType)
-        local result = {}
-        local currentClass = classes[className]
-        
-        while currentClass do
-            local members = currentClass[memberType]
-            if members then
-                for _, entry in ipairs(members) do
-                    table.insert(result, entry)
-                end
-            end
-            currentClass = currentClass.Superclass
-        end
-
-        table.sort(result, function(a, b) return a.Name < b.Name end)
-        return result
-    end
-
-    return {
-        Classes = classes,
-        Enums = enums,
-        GetMember = getMember
-    }
-end
+			classes[class.Name] = newClass
+		end
 
 		for _,enum in pairs(api.Enums) do
 			local newEnum = {}
@@ -2147,7 +2037,6 @@ return {
 		env.encodeBase64 = (syn and syn.crypt.base64.encode) or base64encode or (crypt and crypt.base64encode)
 		env.lz4compress = lz4compress or (syn and syn.crypt.lz4.compress)
 		env.hashmd5 = (syn and function(s) return syn.crypt.custom.hash("md5",s) end) or (crypt and function(s) return crypt.hash(s,"md5") end)
-
 		Main.ResetSettings()
 		Serializer.Init(oldindex)
 
