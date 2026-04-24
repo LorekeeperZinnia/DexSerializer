@@ -21,7 +21,7 @@ DefaultSettings = {
 		IsolateStarterPlayer = true,
 		Binary = true,
 		Callback = false,
-		Clipboard = false
+		Clipboard = true
 	}
 }
 
@@ -1072,7 +1072,7 @@ Serializer = (function()
 			descs[0] = nextRoot
 			for i = 0,#descs do
 				local obj = descs[i]
-				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript")) and not checked[obj] then
+				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript")) or isa(obj,"Script")) and not checked[obj] then
 					local ignored = false
 					if ignoredServices then
 						for i = 1,#ignoredServices do
@@ -1964,8 +1964,6 @@ Main = (function()
 		
 		if game:GetService("RunService"):IsStudio() then
 			rawAPI = game:GetService("ReflectionService"):GetApiDump()
-		else
-			rawAPI = game:HttpGet("https://raw.githubusercontent.com/MaximumADHD/Roblox-Client-Tracker/refs/heads/roblox/Full-API-Dump.json")
 		end
 		
 		local api = service.HttpService:JSONDecode(rawAPI)
