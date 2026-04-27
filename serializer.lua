@@ -20,7 +20,7 @@ DefaultSettings = {
 		IgnoreDefaultProps = true,
 		IsolateStarterPlayer = false,
 		Binary = true,
-		Callback = true,
+		Callback = false,
 		Clipboard = true
 	}
 }
@@ -1850,7 +1850,7 @@ Main = (function()
 		if game:GetService("RunService"):IsStudio() then
 			rawAPI = require(game.ReplicatedStorage.FullAPI)
 		else
-			rawAPI = game:HttpGet("https://github.com/Unkown2012/DexSerializer2/raw/refs/heads/main/Full-API-Dump.json")
+			rawAPI = game:HttpGet("https://raw.githubusercontent.com/MaximumADHD/Roblox-Client-Tracker/refs/heads/roblox/Full-API-Dump.json")
 		end
 		
 		local api = service.HttpService:JSONDecode(rawAPI)
