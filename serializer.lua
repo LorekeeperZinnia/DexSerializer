@@ -1996,49 +1996,66 @@ Main = (function()
 		if game:GetService("RunService"):IsStudio() then
 			rawAPI = require(game.ReplicatedStorage.FullAPI)
 		else
-				local ReflectionService = game:GetService("ReflectionService")
+Main.FetchAPI = function()
+	-- You should see if you can use ReflectionService here
 
-	local fakeAPI = {
-		Classes = {},
-		Enums = {}
-	}
+	local rawAPI
+	
+	local RunService = game:GetService("RunService")
+	local HttpService = game:GetService("HttpService")
 
-	for _, className in ipairs(ReflectionService:GetClasses()) do
-		local class = {
-			Name = className,
-			Superclass = nil, -- ReflectionService no siempre da esto directo
-			Members = {},
-			Tags = {}
+	if RunService:IsStudio() then
+		rawAPI = require(game.ReplicatedStorage.FullAPI)
+	else
+		local ReflectionService = game:GetService("ReflectionService")
+
+		local api = {
+			Classes = {},
+			Enums = {}
 		}
 
-		local success, members = pcall(function()
-			return ReflectionService:GetClassMembers(className)
-		end)
+		for _, className in ipairs(ReflectionService:GetClasses()) do
+			local class = {
+				Name = className,
+				Superclass = nil,
+				Members = {},
+				Tags = {}
+			}
 
-		if success and members then
-			for _, member in ipairs(members) do
-				local newMember = {
-					Name = member.Name,
-					MemberType = member.MemberType,
-					Tags = {}
-				}
+			-- intentar superclass
+			pcall(function()
+				class.Superclass = ReflectionService:GetBaseClass(className)
+			end)
 
-				-- Simular estructura tipo API dump
-				if member.MemberType == "Property" then
-					newMember.ValueType = { Name = member.ValueType or "any" }
-					newMember.Category = "Data"
-					newMember.Serialization = {}
-				elseif member.MemberType == "Function" or member.MemberType == "Event" then
-					newMember.Parameters = {}
-					newMember.ReturnType = { Name = "void" }
+			local success, members = pcall(function()
+				return ReflectionService:GetClassMembers(className)
+			end)
+
+			if success and members then
+				for _, member in ipairs(members) do
+					local m = {
+						Name = member.Name,
+						MemberType = member.MemberType,
+						Tags = {}
+					}
+
+					if member.MemberType == "Property" then
+						m.ValueType = { Name = member.ValueType or "any" }
+						m.Category = "Data"
+						m.Serialization = {}
+					elseif member.MemberType == "Function" or member.MemberType == "Event" then
+						m.Parameters = {}
+						m.ReturnType = { Name = "void" }
+					end
+
+					table.insert(class.Members, m)
 				end
-
-				table.insert(class.Members, newMember)
 			end
+
+			table.insert(api.Classes, class)
 		end
 
-		table.insert(fakeAPI.Classes, class)
-	    end
+		rawAPI = HttpService:JSONEncode(api)
 		end
 		
 		local api = service.HttpService:JSONDecode(rawAPI)
