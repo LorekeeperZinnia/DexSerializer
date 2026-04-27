@@ -1,3 +1,35 @@
+--[[
+
+    ____               _____           _       ___                
+   / __ \___  _  __   / ___/___  _____(_)___ _/ (_)___  ___  _____
+  / / / / _ \| |/_/   \__ \/ _ \/ ___/ / __ `/ / /_  / / _ \/ ___/
+ / /_/ /  __/>  <    ___/ /  __/ /  / / /_/ / / / / /_/  __/ /    
+/_____/\___/_/|_|   /____/\___/_/  /_/\__,_/_/_/ /___/\___/_/     
+                                                                  
+
+The most accurate and top lua roblox binary format serializer since late 2020
+
+Made in preparation for The Augur's reign that started in July 2021
+
+Many ServerScriptService and ServerStorage models of top games were saved with top accuracy
+
+
+This is old and discontinued, but the agency released it to show people the grand serializer that
+powered the saveinstance function in the top executors at the time before they were discontinued:
+- ScriptWare
+- Synapse X
+
+
+It would be nice if someone forked and improved it
+- Support the newer types
+- Use buffer
+- Use ReflectionService
+
+
+]]
+
+
+-- Made by Moon
 local Main,Serializer,API,Settings,DefaultSettings,env
 
 local service = setmetatable({},{__index = function(self,name)
@@ -18,10 +50,10 @@ DefaultSettings = {
 		DecompileIgnore = {"Chat","CoreGui","CorePackages"},
 		ShowStatus = true,
 		IgnoreDefaultProps = true,
-		IsolateStarterPlayer = false,
+		IsolateStarterPlayer = true,
 		Binary = true,
 		Callback = false,
-		Clipboard = true
+		Clipboard = false
 	}
 }
 
@@ -795,7 +827,6 @@ Serializer = (function()
 			return concat(result)
 		end,
 	}
-		
 
 	local specialProps = {
 		["Script"] = {
@@ -812,6 +843,111 @@ Serializer = (function()
 			{Name = "WorldPivotData", ValueType = {Name = "OptionalCoordinateFrame", Category = "DataType"}, IndexName = "WorldPivot"},
 		},
 	}
+
+	--[[
+	local specialProps = {
+		["Instance"] = {
+			{Name = "AttributesSerialize", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "Tags", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+		},
+		["TriangleMeshPart"] = {
+			{Name = "LODData", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "PhysicalConfigData", ValueType = {Name = "SharedString"}, Special = "SharedString"},
+		},
+		["PartOperation"] = {
+			{Name = "AssetId", ValueType = {Name = "Content"}, Special = "NotScriptable"},
+			{Name = "InitialSize", ValueType = {Name = "Vector3"}, Special = "NotScriptable"},
+			{Name = "ChildData", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "MeshData", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "PhysicsData", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "ChildData2", ValueType = {Name = "SharedString"}, Special = "SharedString"},
+			{Name = "MeshData2", ValueType = {Name = "SharedString"}, Special = "SharedString"},
+			{Name = "FormFactor", ValueType = {Name = "FormFactor", Category = "Enum"}, Special = "NotScriptable"},
+		},
+		["MeshPart"] = {
+			{Name = "InitialSize", ValueType = {Name = "Vector3"}, Special = "NotScriptable"},
+			{Name = "PhysicsData", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+		},
+		["Terrain"] = {
+			{Name = "Decoration", ValueType = {Name = "bool"}, Special = "NotScriptable"},
+			{Name = "MaterialColors", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "SmoothGrid", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "PhysicsGrid", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+		},
+		["TerrainRegion"] = { -- TODO: Vector3int16 support for gethiddenprop
+			{Name = "SmoothGrid", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+			{Name = "ExtentsMin", ValueType = {Name = "Vector3int16"}, Special = "Func", Func = function(obj) return workspace.Terrain.MaxExtents.Min end},
+			{Name = "ExtentsMax", ValueType = {Name = "Vector3int16"}, Special = "Func", Func = function(obj) return workspace.Terrain.MaxExtents.Max end},
+		},
+		["BinaryStringValue"] = {
+			{Name = "Value", ValueType = {Name = "BinaryString"}, Special = "BinaryString"},
+		},
+		["Workspace"] = {
+			{Name = "PGSPhysicsSolverEnabled", ValueType = {Name = "bool"}, Special = "Func", Func = function(obj) return obj:PGSIsEnabled() end},
+			{Name = "CollisionGroups", ValueType = {Name = "string"}, Special = "Func", Func = function(obj)
+				local groupTable = {}
+				for i,v in pairs(game:GetService("PhysicsService"):GetCollisionGroups()) do
+					groupTable[i] = v.name.."^"..v.id.."^"..v.mask
+				end
+				return table.concat(groupTable,"\\")
+			end}
+		},
+		["Humanoid"] = {
+			{Name = "Health_XML", ValueType = {Name = "float"}, IndexName = "Health"},
+		},
+		["Sound"] = {
+			{Name = "xmlRead_MaxDistance_3", ValueType = {Name = "float"}, IndexName = "MaxDistance"},
+		},
+		["WeldConstraint"] = {
+			{Name = "CFrame0", ValueType = {Name = "CFrame"}, Special = "NotScriptable"},
+			{Name = "CFrame1", ValueType = {Name = "CFrame"}, Special = "NotScriptable"},
+			{Name = "Part0Internal", ValueType = {Name = "Instance"}, IndexName = "Part0"},
+			{Name = "Part1Internal", ValueType = {Name = "Instance"}, IndexName = "Part1"}
+		},
+		["Lighting"] = {
+			{Name = "Technology", ValueType = {Category = "Enum"}, Special = "NotScriptable"}
+		},
+		["LocalizationTable"] = {
+			{Name = "Contents", ValueType = {Name = "string"}, Special = "NotScriptable"}
+		},
+		["Script"] = {
+			{Name = "Source", ValueType = {Name = "ProtectedString"}, Special = "Decompile"}
+		},
+		["ModuleScript"] = {
+			{Name = "Source", ValueType = {Name = "ProtectedString"}, Special = "Decompile"}
+		},
+		["PackageLink"] = {
+			{Name = "PackageIdSerialize", ValueType = {Name = "Content"}, IndexName = "PackageId"},
+			{Name = "VersionIdSerialize", ValueType = {Name = "int64"}, IndexName = "VersionNumber"}
+		}
+	}
+	]]
+
+	local readMeStart = [==[--[[
+	Thank you for using Dex SaveInstance.
+	You are recommended to save the game (if you used saveplace) right away to take advantage of the binary format (if you didn't save in binary).
+	If your player cannot spawn into the game, please move the scripts in StarterPlayer elsewhere. (This is done by default)
+	If the chat system does not work, please use the explorer and delete everything inside the Chat service. (Or run game:GetService("Chat"):ClearAllChildren())
+	
+	If union and meshpart collisions don't work, first run this script in the Studio command bar:
+	local list = {}
+	local coreGui = game:GetService("CoreGui")
+
+	for i,v in pairs(game:GetDescendants()) do
+		local s,e = pcall(function() return v:IsA("UnionOperation") or v:IsA("MeshPart") end)
+		if s and e and not v:IsDescendantOf(coreGui) then
+			list[#list+1] = v
+		end
+	end
+
+	game.Selection:Set(list)
+	
+	After running it, go to the Properties window and change CollisionFidelity from "Box" to "Default".
+
+	
+	This file was generated with the following settings:
+	
+]==]
 
 	local function getSaveProps(obj,class)
 		local result = {}
@@ -968,7 +1104,7 @@ Serializer = (function()
 			descs[0] = nextRoot
 			for i = 0,#descs do
 				local obj = descs[i]
-				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript") or isa(obj,"Script")) and not checked[obj] then
+				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript")) and not checked[obj] then
 					local ignored = false
 					if ignoredServices then
 						for i = 1,#ignoredServices do
@@ -1135,6 +1271,8 @@ Serializer = (function()
 				end
 			end
 
+			local message = readMeStart
+
 			for i, v in next, saveSettings do
 				if type(v) == "table" then -- assume array
 					local strings = {}
@@ -1146,8 +1284,14 @@ Serializer = (function()
 					message = message .. "\t" .. tostring(i) .. " = " .. tostring(v) .. "\n"
 				end
 			end
-			bufferCount = bufferCount + 1
 
+			message = message .. "]]"
+
+			local readmeScript = Instance.new("Script")
+			readmeScript.Name = "README"
+			nilBlacklist[readmeScript] = true
+			sources[readmeScript] = message
+			recur(readmeScript)
 		elseif isTable then
 			for i = 1,#root do
 				recur(root[i])
@@ -1702,6 +1846,8 @@ Serializer = (function()
 				end
 			end
 
+			local message = readMeStart
+
 			for i, v in next, saveSettings do
 				if type(v) == "table" then -- assume array
 					local strings = {}
@@ -1714,6 +1860,17 @@ Serializer = (function()
 				end
 
 			end
+
+			message = message .. "]]"
+
+			buffer[bufferCount] = [==[
+
+<Item class="Script" referent="RBX999999999">
+<Properties>
+<string name="Name">README</string>
+<ProtectedString name="Source">]==]..gsub(message, xmlReplacePattern, xmlReplace)..[==[</ProtectedString>
+</Properties>
+</Item>]==]
 			bufferCount = bufferCount + 1
 		elseif isTable then
 			for i = 1,#root do
@@ -1834,23 +1991,54 @@ Main = (function()
 	Main.FetchAPI = function()
 		-- You should see if you can use ReflectionService here
 
-       	local success, result = pcall(function()
-		local ReflectionService = game:GetService("ReflectionService")
-		return ReflectionService:GetClasses()
-	end)
-
-	if success and result then
-		return result
-	end
-
-
-		--local robloxVer = game:HttpGet("http://setup.roblox.com/versionQTStudio")
 		local rawAPI
 		
 		if game:GetService("RunService"):IsStudio() then
 			rawAPI = require(game.ReplicatedStorage.FullAPI)
 		else
-			rawAPI = game:HttpGet("https://raw.githubusercontent.com/MaximumADHD/Roblox-Client-Tracker/refs/heads/roblox/Full-API-Dump.json")
+				local ReflectionService = game:GetService("ReflectionService")
+
+	local fakeAPI = {
+		Classes = {},
+		Enums = {}
+	}
+
+	for _, className in ipairs(ReflectionService:GetClasses()) do
+		local class = {
+			Name = className,
+			Superclass = nil, -- ReflectionService no siempre da esto directo
+			Members = {},
+			Tags = {}
+		}
+
+		local success, members = pcall(function()
+			return ReflectionService:GetClassMembers(className)
+		end)
+
+		if success and members then
+			for _, member in ipairs(members) do
+				local newMember = {
+					Name = member.Name,
+					MemberType = member.MemberType,
+					Tags = {}
+				}
+
+				-- Simular estructura tipo API dump
+				if member.MemberType == "Property" then
+					newMember.ValueType = { Name = member.ValueType or "any" }
+					newMember.Category = "Data"
+					newMember.Serialization = {}
+				elseif member.MemberType == "Function" or member.MemberType == "Event" then
+					newMember.Parameters = {}
+					newMember.ReturnType = { Name = "void" }
+				end
+
+				table.insert(class.Members, newMember)
+			end
+		end
+
+		table.insert(fakeAPI.Classes, class)
+	    end
 		end
 		
 		local api = service.HttpService:JSONDecode(rawAPI)
@@ -1977,6 +2165,7 @@ return {
 		env.encodeBase64 = (syn and syn.crypt.base64.encode) or base64encode or (crypt and crypt.base64encode)
 		env.lz4compress = lz4compress or (syn and syn.crypt.lz4.compress)
 		env.hashmd5 = (syn and function(s) return syn.crypt.custom.hash("md5",s) end) or (crypt and function(s) return crypt.hash(s,"md5") end)
+
 		Main.ResetSettings()
 		Serializer.Init(oldindex)
 
