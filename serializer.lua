@@ -120,6 +120,9 @@ Serializer = (function()
 
 
 	local propFilter = {
+		["BasePart"] = {
+			["Color3uint8"] = true
+		},
 		["BaseScript"] = {
 			["LinkedSource"] = true
 		},
@@ -249,7 +252,7 @@ Serializer = (function()
 		end,
 		["Axes"] = function(name,val)
 			local axisInt = (val.Z and 4 or 0) + (val.Y and 2 or 0) + (val.X and 1 or 0)
-			return format('\n<Axes name="%s">\n<axes>%d</axes>\n</Faces>',name,axisInt)
+			return format('\n<Axes name="%s">\n<axes>%d</axes>\n</Axes>',name,axisInt)
 		end,
 		["Ray"] = function(name,val)
 			local origin = val.Origin
@@ -268,6 +271,9 @@ Serializer = (function()
 		end,
 		["SharedString"] = function(name,val)
 			return '\n<SharedString name="'..name..'">'..val..'</SharedString>'
+		end,
+		["SecurityCapabilities"] = function(name,val)
+			return format('\n<SecurityCapabilities name="%s">%d</SecurityCapabilities>',name,val or 0)
 		end,
 	}
 

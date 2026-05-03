@@ -90,17 +90,13 @@ If Callback or Clipboard is set, it does that instead of writing to a file.
 
 ## Suggested Improvements
 Here are some sugggestions for those interested in maintaining this script:
-- Support the newer roblox types such as Content, SecurityCapabilities, etc
 	- Would also be nice if you can work with executor devs to make sure their `gethiddenprop` function supports all value types that can be serialized.
 	- If you are interested in reversing the new types, I have attached a script called `unlz4.lua` that you can modify to decompress the lz4 chunks in a binary format file so you can take a look at how studio saves certain types.
-- Use buffer
 - Use ReflectionService for API dumps
 - Possibly clean it up
 
 ## Known Issues
-- Axes property doesn't save properly in XML due to a typo in the tag
 - XML may not work with the full API dump since I had scripted it before switching over to full API dump. I had used to make special handlers for BinaryString and other hidden properties.
-- Color3uint8 in binary was just an assumption (A color type that has R G B as integers from 0-255) since gethiddenprop did not support that value type. If you run into issues, simply add BasePart.Color3uint8 to the `propFilter` table.
 
 ## Community Server
 If you would like to find more information, or talk to others interested in this script, you may join the server:<br>https://discord.gg/jnXFq2VBgU<br>
