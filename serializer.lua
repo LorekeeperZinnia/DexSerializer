@@ -20,9 +20,7 @@ powered the saveinstance function in the top executors at the time before they w
 - Synapse X
 
 
-It would be nice if someone forked and improved it
-- Support the newer types
-- Use buffer
+Activly working on supporting the following:
 - Use ReflectionService
 
 
@@ -72,8 +70,6 @@ Serializer = (function()
 	local httpService = service.HttpService
 	local urlEncode = httpService.UrlEncode
 	local concat = table.concat
-	local s_pack = string.pack
-	local s_unpack = string.unpack
 	local lrotate = bit32.lrotate
 	local tableCreate = table.create
 	local select = select
@@ -83,6 +79,122 @@ Serializer = (function()
 	local nilSafe = {}
 	local gameId
 
+	local s_pack, s_unpack
+	if rawget(_G, "buffer") then
+		function s_pack(fmt, ...)
+			local args = {...}
+			local buf = buffer.create(256)
+			local offset = 0
+			
+			local fmt_pos = 1
+			local arg_idx = 1
+			
+			while fmt_pos <= #fmt do
+				local char = fmt:sub(fmt_pos, fmt_pos)
+				
+				if char == '<' or char == '>' or char == '=' then
+					fmt_pos = fmt_pos + 1
+				elseif char == 'I' then
+					fmt_pos = fmt_pos + 1
+					local size_char = fmt:sub(fmt_pos, fmt_pos)
+					if size_char == '4' then
+						buffer.writeu32(buf, offset, args[arg_idx])
+						offset = offset + 4
+						arg_idx = arg_idx + 1
+						fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'i' then
+					fmt_pos = fmt_pos + 1
+					local size_char = fmt:sub(fmt_pos, fmt_pos)
+					if size_char == '4' then
+						buffer.writei32(buf, offset, args[arg_idx])
+						offset = offset + 4
+						arg_idx = arg_idx + 1
+						fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'f' then
+					buffer.writef32(buf, offset, args[arg_idx])
+					offset = offset + 4
+					arg_idx = arg_idx + 1
+					fmt_pos = fmt_pos + 1
+				elseif char == 'd' then
+					buffer.writef64(buf, offset, args[arg_idx])
+					offset = offset + 8
+					arg_idx = arg_idx + 1
+					fmt_pos = fmt_pos + 1
+				elseif char == 'b' then
+					buffer.writei8(buf, offset, args[arg_idx] or 0)
+					offset = offset + 1
+					arg_idx = arg_idx + 1
+					fmt_pos = fmt_pos + 1
+				elseif char == 'B' then
+					buffer.writeu8(buf, offset, args[arg_idx] or 0)
+					offset = offset + 1
+					arg_idx = arg_idx + 1
+					fmt_pos = fmt_pos + 1
+				else
+					fmt_pos = fmt_pos + 1
+				end
+			end
+			
+			return buffer.readstring(buf, 0, offset)
+		end
+		
+		function s_unpack(fmt, data, offset)
+			offset = offset or 1
+			local buf_offset = offset - 1
+			local buf = buffer.fromstring(data)
+			local results = {}
+			local fmt_pos = 1
+			
+			while fmt_pos <= #fmt do
+				local char = fmt:sub(fmt_pos, fmt_pos)
+				
+				if char == '<' or char == '>' or char == '=' then
+					fmt_pos = fmt_pos + 1
+				elseif char == 'I' then
+					fmt_pos = fmt_pos + 1
+					local size_char = fmt:sub(fmt_pos, fmt_pos)
+					if size_char == '4' then
+						table.insert(results, buffer.readu32(buf, buf_offset))
+						buf_offset = buf_offset + 4
+						fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'i' then
+					fmt_pos = fmt_pos + 1
+					local size_char = fmt:sub(fmt_pos, fmt_pos)
+					if size_char == '4' then
+						table.insert(results, buffer.readi32(buf, buf_offset))
+						buf_offset = buf_offset + 4
+						fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'f' then
+					table.insert(results, buffer.readf32(buf, buf_offset))
+					buf_offset = buf_offset + 4
+					fmt_pos = fmt_pos + 1
+				elseif char == 'd' then
+					table.insert(results, buffer.readf64(buf, buf_offset))
+					buf_offset = buf_offset + 8
+					fmt_pos = fmt_pos + 1
+				elseif char == 'b' then
+					table.insert(results, buffer.readi8(buf, buf_offset))
+					buf_offset = buf_offset + 1
+					fmt_pos = fmt_pos + 1
+				elseif char == 'B' then
+					table.insert(results, buffer.readu8(buf, buf_offset))
+					buf_offset = buf_offset + 1
+					fmt_pos = fmt_pos + 1
+				else
+					fmt_pos = fmt_pos + 1
+				end
+			end
+			
+			return unpack(results)
+		end
+	else
+		s_pack = string.pack
+		s_unpack = string.unpack
+	end
 	--[[
 	local propBypass = {
 		["BasePart"] = {
