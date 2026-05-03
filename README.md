@@ -91,8 +91,6 @@ If Callback or Clipboard is set, it does that instead of writing to a file.
 ## Suggested Improvements
 Here are some sugggestions for those interested in maintaining this script:
 	- Would also be nice if you can work with executor devs to make sure their `gethiddenprop` function supports all value types that can be serialized.
-	- If you are interested in reversing the new types, I have attached a script called `unlz4.lua` that you can modify to decompress the lz4 chunks in a binary format file so you can take a look at how studio saves certain types.
-- Use ReflectionService for API dumps
 - Possibly clean it up
 
 ## Known Issues
