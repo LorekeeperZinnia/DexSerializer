@@ -94,7 +94,7 @@ Here are some sugggestions for those interested in maintaining this script:
 - Possibly clean it up
 
 ## Known Issues
-- XML may not work with the full API dump since I had scripted it before switching over to full API dump. I had used to make special handlers for BinaryString and other hidden properties.
+ - None :3
 
 ## Community Server
 If you would like to find more information, or talk to others interested in this script, you may join the server:<br>https://discord.gg/jnXFq2VBgU<br>
