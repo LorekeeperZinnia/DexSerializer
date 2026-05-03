@@ -2099,7 +2099,17 @@ Main = (function()
 
 				local mType = member.MemberType
 				if mType == "Property" then
-					newMember.ValueType = member.ValueType
+					-- Normalize ValueType to a table with a Name field for consistency
+					local vt = member.ValueType
+					if type(vt) == "string" then
+						vt = { Name = vt }
+					elseif type(vt) == "table" and vt.Name == nil then
+						-- Attempt to extract a name-like field if present
+						for k,v in pairs(vt) do
+							if type(v) == "string" then vt.Name = v; break end
+						end
+					end
+					newMember.ValueType = vt
 					newMember.Category = member.Category
 					newMember.Serialization = member.Serialization
 					table.insert(newClass.Properties,newMember)
