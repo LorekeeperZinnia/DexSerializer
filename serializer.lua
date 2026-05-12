@@ -1230,6 +1230,12 @@ Serializer = (function()
 			spawn(function()
 				while #scripts > 0 do
 					local nextScript = table.remove(scripts)
+					if not nextScript then break end
+					local scriptName
+					pcall(function() scriptName = nextScript:GetFullName() end)
+					if statusText then
+						statusText.Update("Decompiling " .. (scriptName or "<unknown>") .. " (" .. (totalScripts - left + 1) .. "/" .. totalScripts .. ")")
+					end
 					local source, err = doDecompile(nextScript,saveSettings)
 
 					if source then
