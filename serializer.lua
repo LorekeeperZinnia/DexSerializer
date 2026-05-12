@@ -1125,6 +1125,10 @@ Serializer = (function()
 
 	local function createStatusText()
 		local statusText
+		local pendingText = nil
+		local dirty = false
+		local conn
+		local runService = service.RunService
 		if syn or elysianexecute then
 			statusText = Drawing.new("Text")
 			statusText.Color = Color3.new(1,1,1)
@@ -1132,17 +1136,37 @@ Serializer = (function()
 			statusText.OutlineColor = Color3.new(0,0,0)
 			statusText[syn and "Size" or "FontSize"] = 50
 			if syn then statusText.Visible = true end
+
+			-- Buffer updates and apply them on the main thread to avoid parallel writes
+			local function applyPending()
+				if not pendingText then
+					statusText.Text = ""
+				else
+					statusText.Text = pendingText
+				end
+				local viewport = workspace.CurrentCamera.ViewportSize
+				statusText.Position = Vector2.new(viewport.X / 2 - statusText.TextBounds.X / 2, 50)
+				pendingText = nil
+				dirty = false
+			end
+
+			-- Connect a single heartbeat callback to perform actual UI writes
+			conn = runService.Heartbeat:Connect(function()
+				if dirty then
+					applyPending()
+				end
+			end)
 		else
 			return nil
 		end
 
 		local function updateStatus(text)
-			local viewport = workspace.CurrentCamera.ViewportSize
-			statusText.Text = text or ""
-			statusText.Position = Vector2.new(viewport.X / 2 - statusText.TextBounds.X / 2, 50)
+			pendingText = text or ""
+			dirty = true
 		end
 
 		local function removeStatus()
+			if conn then conn:Disconnect() end
 			statusText:Remove()
 		end
 
