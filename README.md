@@ -45,7 +45,7 @@ It would be nice if executors supported this fully so in the event The Augur ris
 ## How to Use
 Assuming you are using it as a module
 ```lua
-local serializer = local serializer = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/FirTheDeveloper/DexSerializer/refs/heads/main/serializer.lua"))()
+local serializer = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/FirTheDeveloper/DexSerializer/refs/heads/main/serializer.lua"))()
 serializer.Init()
 
 -- Then we can save
