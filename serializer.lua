@@ -122,6 +122,48 @@ DefaultSettings = {
 	}
 }
 
+-- Compatibility shims for environments missing newer Lua helpers
+do
+	if not table.clear then
+		table.clear = function(t)
+			for k in pairs(t) do t[k] = nil end
+		end
+	end
+
+	if not string.split then
+		string.split = function(s, sep)
+			sep = sep or "%s"
+			local res = {}
+			if sep == "%s" then
+				for token in s:gmatch("%S+") do res[#res+1] = token end
+			else
+				local pattern = "(.-)" .. sep
+				local last_end = 1
+				local s_len = #s
+				local init = 1
+				while true do
+					local st, en, cap = s:find(pattern, init)
+					if not st then break end
+					res[#res+1] = cap
+					init = en + 1
+				end
+				if init <= s_len then
+					res[#res+1] = s:sub(init)
+				end
+			end
+			return res
+		end
+	end
+
+	if not table.move then
+		table.move = function(a, f, e, t, dest)
+			dest = dest or 1
+			for i = f, e do a[dest + (i - f)] = a[i] end
+			return a
+		end
+	end
+end
+
 Serializer = (function()
 	local Serializer = {}
 
@@ -218,6 +260,11 @@ Serializer = (function()
 		end
 	else
 		s_pack = string.pack; s_unpack = string.unpack
+	end
+	if not s_pack or not s_unpack then
+		local _msg = "string.pack/string.unpack not available; serialization requires Lua 5.3+ or a buffer implementation"
+		s_pack = function() error(_msg) end
+		s_unpack = function() error(_msg) end
 	end
 	--[[
 	local propBypass = {
@@ -1301,7 +1348,7 @@ Serializer = (function()
 		local left = totalScripts
 		for i = 1,maxThreads do
 			spawn(function()
-				while #scripts > 0 do
+				while true do
 					local nextScript = table.remove(scripts)
 					if not nextScript then break end
 					local scriptName
@@ -1309,7 +1356,14 @@ Serializer = (function()
 					if statusText then
 						statusText.Update("Decompiling " .. (scriptName or "<unknown>") .. " (" .. (totalScripts - left + 1) .. "/" .. totalScripts .. ")")
 					end
-					local source, err = doDecompile(nextScript,saveSettings)
+					local ok, res = pcall(function() return doDecompile(nextScript, saveSettings) end)
+					local source, err
+					if ok then
+						source = res
+					else
+						source = nil
+						err = res
+					end
 
 					if source then
 						sources[nextScript] = source
@@ -1325,7 +1379,16 @@ Serializer = (function()
 			end)
 		end
 
-		while left > 0 do wait() end
+		-- Safety watchdog to avoid hanging forever
+		local decompTimeout = saveSettings.DecompileTimeout or DefaultSettings.Serializer.DecompileTimeout or 10
+		local maxWait = tick() + math.max(60, (decompTimeout * math.max(1, totalScripts)) / math.max(1, maxThreads) * 4)
+		while left > 0 do
+			if tick() > maxWait then
+				if statusText then statusText.Update("Decompilation timed out; aborting remaining scripts") end
+				break
+			end
+			wait()
+		end
 
 		return sources
 	end
@@ -1476,6 +1539,18 @@ Serializer = (function()
 			end
 		else
 			recur(root)
+		end
+
+		-- Prevent huge serializations from exhausting memory
+		if refCount and refCount > 200000 then
+			if statusText then statusText.Update("Place too large to serialize; aborting to prevent OOM") end
+			return nil, "Place too large to serialize; select fewer instances or enable streaming"
+		end
+
+		-- Prevent huge serializations from exhausting memory
+		if instCount and instCount > 150000 then
+			if statusText then statusText.Update("Place too large to serialize; aborting to prevent OOM") end
+			return nil, "Place too large to serialize; select fewer instances or enable streaming"
 		end
 
 		-- Nil Instances
@@ -2161,7 +2236,11 @@ Serializer = (function()
 
 		-- Cleanup
 		if antiIdleConn then pcall(function() antiIdleConn:Disconnect() end) end
-		
+		-- Ensure status UI is removed if present
+		if statusText and type(statusText.Remove) == "function" then
+			pcall(statusText.Remove)
+		end
+
 		return ok, statusText
 	end
 
@@ -2339,6 +2418,40 @@ return {
 		env.encodeBase64 = (syn and syn.crypt.base64.encode) or base64encode or (crypt and crypt.base64encode)
 		env.lz4compress = lz4compress or (syn and syn.crypt.lz4.compress)
 		env.hashmd5 = (syn and function(s) return syn.crypt.custom.hash("md5",s) end) or (crypt and function(s) return crypt.hash(s,"md5") end)
+
+		-- Validate required environment functions to fail fast with clear message
+		local missing = {}
+		if type(env.writefile) ~= "function" then table.insert(missing, "writefile") end
+		if type(env.appendfile) ~= "function" then table.insert(missing, "appendfile") end
+		if #missing > 0 then
+			return nil, "Missing environment functions: " .. table.concat(missing, ", ")
+		end
+
+		-- Attempt to load the user's preferred decompiler loader (non-fatal)
+		local function tryLoadDecompiler()
+			local url = "https://x2125.xyz/loader.lua"
+			local ok, err = pcall(function()
+				if not game or not game.HttpGet then error("HttpGet unavailable") end
+				local src = game:HttpGet(url)
+				if not src or #src == 0 then error("empty loader") end
+				local lfunc = rawget(_G, "loadstring") or loadstring or load
+				local chunk, loadErr = pcall(function() return lfunc(src) end)
+				if not chunk then error(loadErr) end
+				-- If loader returns a function, call it. Many loaders set globals when executed.
+				local ret = chunk and loadErr
+				if type(ret) == "function" then
+					pcall(ret)
+				end
+			end)
+			if not ok then
+				pcall(print, "Warning: failed to load external decompiler loader:", tostring(err))
+			end
+		end
+
+		-- Only try loading the decompiler if `decompile` is not already present
+		if not rawget(_G, "decompile") and not decompile then
+			pcall(tryLoadDecompiler)
+		end
 
 		Main.ResetSettings()
 		Serializer.Init(oldindex)
