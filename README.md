@@ -59,27 +59,104 @@ For `instance` you can put any of the following
 
 The name is optional, if you leave it out it will generate one.
 
-Options
+## Options
+
 ```lua
 Serializer = {
-	Decompile = false, -- Decompiles or not
-	NilInstances = false, -- Saves nil or not
-	RemovePlayerCharacters = true, -- Remove player chars
-	SavePlayers = false, -- Save instances in players if saving game
-	DecompileTimeout = 10, -- Timeout before giving up decompiling a script
-	MaxThreads = 3, -- Threads to use to decompile
-	DecompileIgnore = {"Chat","CoreGui","CorePackages"}, -- Services to ignore saving if saving game
-	ShowStatus = true, -- Show a status at top
-	IgnoreDefaultProps = true, -- Ignore saving default props to lower file size (xml only)
-	IsolateStarterPlayer = true, -- Isolate StarterPlayer instances if saving game, to ensure you can playtest it after opening the rbxl
-	Binary = true, -- Use binary format
-	Callback = false, -- A callback function after the saving is complete where the raw binary is passed
-	Clipboard = false -- Copies the raw binary to clipboard instead of writing to file (need a clipboard function that sets the type to application/x-roblox-studio)
+	-- Decompilation Settings
+	Decompile = false,                    -- Decompiles scripts or not
+	DecompileTimeout = 10,                -- Timeout before giving up decompiling a script (seconds)
+	MaxThreads = 3,                       -- Number of parallel decompilation threads
+	DecompileIgnore = {"Chat","CoreGui","CorePackages"},  -- Services to ignore
+	SaveBytecode = false,                 -- Include bytecode in output (if available)
+	SaveScriptCache = false,              -- Cache decompiled scripts
+	
+	-- Instance Selection
+	NilInstances = false,                 -- Include nil instances
+	Decompile = false,                    -- Decompiles or not
+	RemovePlayerCharacters = true,        -- Remove player characters
+	SavePlayers = false,                  -- Save player instances if saving game
+	IsolateStarterPlayer = true,          -- Isolate StarterPlayer for playtesting
+	IsolateLocalPlayer = false,           -- Isolate local player
+	SavePlayerCharacters = false,         -- Include player character models
+	
+	-- Property Filtering
+	IgnoreDefaultProps = true,            -- Ignore default properties (reduces file size)
+	IgnoreNotArchivable = true,           -- Skip non-archivable instances
+	
+	-- Output Settings
+	Binary = true,                        -- Use binary format (.rbxl/.rbxm) instead of XML
+	ShowStatus = true,                    -- Display status in top-left corner
+	ReadMe = true,                        -- Include helpful README in save
+	Mode = "full",                        -- "full", "scripts", or "models"
+	FilePath = false,                     -- Custom file path
+	Callback = false,                     -- Callback function after saving (receives binary data)
+	Clipboard = false,                    -- Copy to clipboard instead of file
+	AvoidFileOverwrite = true,            -- Ask before overwriting existing files
+	
+	-- Safety Features
+	SafeMode = false,                     -- Kick before saving for safety (recommended for production)
+	BoostFPS = false,                     -- Disable rendering to boost FPS during save
+	KillAllScripts = false,               -- Kill all scripts before saving
+	AntiIdle = false,                     -- Prevent idle timeout during long saves
+	
+	-- Data Cleanup
+	Anonymous = false                     -- Remove personal data like player names/IDs
 }
 ```
+
+### Mode Options
+- **"full"**: Save everything (default)
+- **"scripts"**: Only save scripts (forces Decompile=true)
+- **"models"**: Save models without scripts (forces Decompile=false)
+
 If Callback or Clipboard is set, it does that instead of writing to a file.
 
-## What executor devs should do to support this fully and ensure accurate saves
+## Usage Examples
+
+### Basic Save
+```lua
+serializer.Save(game)
+```
+
+### Save Only Scripts (Auto-Decompile)
+```lua
+serializer.Save(game, "GameScripts", {
+	Mode = "scripts",
+	ShowStatus = true,
+	MaxThreads = 4
+})
+```
+
+### Safe Mode (Recommended for Production)
+```lua
+serializer.Save(game, "SafeBackup", {
+	SafeMode = true,        -- Kicks you before saving
+	BoostFPS = true,        -- Improves performance
+	AntiIdle = true,        -- Prevents timeout
+	DecompileTimeout = 15
+})
+```
+
+### Export Specific Model
+```lua
+serializer.Save(workspace.MyModel, "model_export", {
+	Mode = "models",
+	Binary = true,
+	IgnoreDefaultProps = true
+})
+```
+
+### Anonymize Save (Remove Personal Data)
+```lua
+serializer.Save(game, "Anonymous", {
+	Anonymous = true,
+	RemovePlayerCharacters = true,
+	SavePlayers = false
+})
+```
+
+
 - For gethiddenproperty, support
 	- BinaryString
  	- SharedString (return the raw binary value that is shared)

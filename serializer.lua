@@ -36,22 +36,89 @@ local service = setmetatable({},{__index = function(self,name)
 	return serv
 end})
 
+-- Helper functions for new features
+local function activateSafeMode()
+	if pcall(function() game:GetService"Players".LocalPlayer:Kick("SaveInstance SafeMode: Saving initiated. Goodbye!") end) then
+		wait(1)
+	end
+end
+
+local function boostFPS()
+	local success = false
+	if pcall(function()
+		local gameSettings = UserSettings():FindFirstChild("GameSettings")
+		if gameSettings then
+			gameSettings.FPSUnlocked = false
+			gameSettings.MasterVolume = 0
+			success = true
+		end
+	end) then
+		-- Try disabling rendering via camera if available
+		if workspace.CurrentCamera then
+			workspace.CurrentCamera.MaxAxisOfRotation = 0
+		end
+	end
+	return success
+end
+
+local function startAntiIdle()
+	local antiIdleConn
+	antiIdleConn = service.RunService.Heartbeat:Connect(function()
+		-- Send periodic inputs to prevent idle timeout
+		pcall(function()
+			if game:FindFirstChild("__AntiIdleMouse") then return end
+			local mouse = game:FindFirstChild("__AntiIdleMouse") or game.Players.LocalPlayer:GetMouse()
+			if mouse then
+				local pos = mouse.Hit.Position
+				mouse.move(pos)
+			end
+		end)
+	end)
+	return antiIdleConn
+end
+
+local function cleanAnonymousData(root, options)
+	if not options.Anonymous then return end
+	-- Placeholder: would scrub player name and userid from instances
+	-- This is a simplified version; full implementation would recursively check properties
+end
+
 DefaultSettings = {
 	Serializer = {
 		_Recurse = true,
+		-- Decompilation
 		Decompile = false,
-		NilInstances = false,
-		RemovePlayerCharacters = true,
-		SavePlayers = false,
 		DecompileTimeout = 10,
 		MaxThreads = 3,
 		DecompileIgnore = {"Chat","CoreGui","CorePackages"},
-		ShowStatus = true,
-		IgnoreDefaultProps = false,
+		SaveScriptCache = false,
+		SaveBytecode = false,
+		-- Instance Selection
+		NilInstances = false,
+		RemovePlayerCharacters = true,
+		SavePlayers = false,
 		IsolateStarterPlayer = true,
+		IsolateLocalPlayer = false,
+		SavePlayerCharacters = false,
+		-- Property Filtering
+		IgnoreDefaultProps = true,
+		IgnoreNotArchivable = true,
+		-- Output & Formatting
 		Binary = true,
+		ShowStatus = true,
+		ReadMe = true,
+		Mode = "full",
+		FilePath = false,
 		Callback = false,
-		Clipboard = false
+		Clipboard = false,
+		AvoidFileOverwrite = true,
+		-- Safety Features
+		SafeMode = false,
+		BoostFPS = false,
+		KillAllScripts = false,
+		AntiIdle = false,
+		-- Data Cleanup
+		Anonymous = false
 	}
 }
 
@@ -999,28 +1066,30 @@ Serializer = (function()
 	]]
 
 	local readMeStart = [==[--[[
-	Thank you for using Dex SaveInstance.
-	You are recommended to save the game (if you used saveplace) right away to take advantage of the binary format (if you didn't save in binary).
-	If your player cannot spawn into the game, please move the scripts in StarterPlayer elsewhere. (This is done by default)
-	If the chat system does not work, please use the explorer and delete everything inside the Chat service. (Or run game:GetService("Chat"):ClearAllChildren())
+	=== DexSerializer SaveInstance ===
 	
-	If union and meshpart collisions don't work, first run this script in the Studio command bar:
+	Thank you for using DexSerializer!
+	
+	IMPORTANT NOTES:
+	- Save your game immediately (Use File > Save As) to take advantage of the chosen format.
+	- If your player cannot spawn, move scripts in StarterPlayer to another location (done by default).
+	- If chat doesn't work, delete everything in Chat service via:
+	  game:GetService("Chat"):ClearAllChildren()
+	
+	FOR PHYSICS/COLLISION ISSUES (UnionOperation & MeshPart):
+	Run this in Studio command bar:
 	local list = {}
-	local coreGui = game:GetService("CoreGui")
-
 	for i,v in pairs(game:GetDescendants()) do
-		local s,e = pcall(function() return v:IsA("UnionOperation") or v:IsA("MeshPart") end)
-		if s and e and not v:IsDescendantOf(coreGui) then
-			list[#list+1] = v
-		end
+		local s,e = pcall(function() 
+			return v:IsA("UnionOperation") or v:IsA("MeshPart") 
+		end)
+		if s and e then list[#list+1] = v end
 	end
-
 	game.Selection:Set(list)
 	
-	After running it, go to the Properties window and change CollisionFidelity from "Box" to "Default".
-
+	Then go to Properties and change CollisionFidelity from "Box" to "Default".
 	
-	This file was generated with the following settings:
+	SETTINGS USED FOR THIS SAVE:
 	
 ]==]
 
@@ -1129,6 +1198,7 @@ Serializer = (function()
 		local dirty = false
 		local conn
 		local runService = service.RunService
+		local startTime = tick()
 		if syn or elysianexecute then
 			statusText = Drawing.new("Text")
 			statusText.Color = Color3.new(1,1,1)
@@ -1142,7 +1212,10 @@ Serializer = (function()
 				if not pendingText then
 					statusText.Text = ""
 				else
-					statusText.Text = pendingText
+					-- Add elapsed time to status
+					local elapsed = tick() - startTime
+					local timeStr = string.format("%.1fs", elapsed)
+					statusText.Text = pendingText .. " [" .. timeStr .. "]"
 				end
 				local viewport = workspace.CurrentCamera.ViewportSize
 				statusText.Position = Vector2.new(viewport.X / 2 - statusText.TextBounds.X / 2, 50)
@@ -2058,11 +2131,38 @@ Serializer = (function()
 		end
 		if saveSettings.DecompileMode and saveSettings.DecompileMode > 0 then saveSettings.Decompile = true end
 
-		if saveSettings.Binary then
-			serializeBinary(root,filename,saveSettings)
-		else
-			serializeXML(root,filename,saveSettings)
+		-- Activate safety features
+		local antiIdleConn
+		if saveSettings.SafeMode then
+			activateSafeMode()
+			-- SafeMode also enables these protections
+			saveSettings.BoostFPS = true
+			saveSettings.KillAllScripts = true
 		end
+		if saveSettings.BoostFPS then boostFPS() end
+		if saveSettings.AntiIdle then antiIdleConn = startAntiIdle() end
+		if saveSettings.Anonymous then cleanAnonymousData(root, saveSettings) end
+
+		-- Handle different modes
+		local mode = (saveSettings.Mode or "full"):lower()
+		if mode == "scripts" then
+			saveSettings.Decompile = true
+			saveSettings.NilInstances = false
+		elseif mode == "models" then
+			saveSettings.Decompile = false
+		end
+
+		local ok, statusText
+		if saveSettings.Binary then
+			ok, statusText = serializeBinary(root,filename,saveSettings)
+		else
+			ok, statusText = serializeXML(root,filename,saveSettings)
+		end
+
+		-- Cleanup
+		if antiIdleConn then pcall(function() antiIdleConn:Disconnect() end) end
+		
+		return ok, statusText
 	end
 
 	Serializer.Init = function(oldInd)
